@@ -1,6 +1,11 @@
 import { PlaceOrderUseCase } from "./application/PlaceOrderUseCase";
 import { RetryFailedMailsUseCase } from "./application/RetryFailedMailsUseCase";
 
+import { OrderPlacedMailHandler } from "./application/handlers/OrderPlacedMailHandler";
+import { OrderPlacedAnalyticsHandler } from "./application/handlers/OrderPlacedAnalyticsHandler";
+import { OrderPlacedNotificationHandler } from "./application/handlers/OrderPlacedNotificationHandler";
+
+import { InMemoryEventBus } from "./infrastructure/InMemoryEventBus";
 import { InMemoryOrderRepository } from "./infrastructure/InMemoryOrderRepository";
 import { InMemoryFailedMailRepository } from "./infrastructure/InMemoryFailedMailRepository";
 
@@ -20,23 +25,56 @@ async function main() {
   const analyticsService = new ConsoleAnalyticsService();
   const notificationService = new ConsoleNotificationService();
 
-  // 注文UseCase
-  const placeOrderUseCase = new PlaceOrderUseCase(
+  // EventBus
+  const eventBus = new InMemoryEventBus();
+
+  // EventHandler
+  const mailHandler = new OrderPlacedMailHandler(
     orderRepository,
     mailService,
-    analyticsService,
-    notificationService,
     failedMailRepository,
   );
 
-  // メール再送UseCase
+  const analyticsHandler = new OrderPlacedAnalyticsHandler(
+    orderRepository,
+    analyticsService,
+  );
+
+  const notificationHandler = new OrderPlacedNotificationHandler(
+    orderRepository,
+    notificationService,
+  );
+
+  // Subscriberの登録
+  eventBus.subscribe(
+    "OrderPlaced",
+    (event) => mailHandler.handle(event),
+  );
+
+  eventBus.subscribe(
+    "OrderPlaced",
+    (event) => analyticsHandler.handle(event),
+  );
+
+  eventBus.subscribe(
+    "OrderPlaced",
+    (event) => notificationHandler.handle(event),
+  );
+
+  // 注文UseCase
+  const placeOrderUseCase = new PlaceOrderUseCase(
+    orderRepository,
+    eventBus,
+  );
+
+  // メール再送UseCase（Step 03のまま）
   const retryFailedMailsUseCase = new RetryFailedMailsUseCase(
     orderRepository,
     mailService,
     failedMailRepository,
   );
 
-  // 注文実行
+  // 注文を実行
   const result = await placeOrderUseCase.execute({
     items: [
       {
@@ -58,14 +96,13 @@ async function main() {
   console.log("注文ID:", result.orderId);
   console.log("合計金額:", result.totalPrice);
   console.log("ステータス:", result.status);
-  console.log("メール送信:", result.mailStatus);
 
   console.log(
     "再送待ち:",
     await failedMailRepository.findAll(),
   );
 
-  // メール送信に失敗した場合だけ再実行
+  // Step 03のメール再送機能
   if (shouldFailMail) {
     console.log("\n--- メール送信を復旧 ---");
 
