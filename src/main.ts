@@ -1,40 +1,59 @@
 import { PlaceOrderUseCase } from "./application/PlaceOrderUseCase";
 import { InMemoryOrderRepository } from "./infrastructure/InMemoryOrderRepository";
 
+import { ConsoleMailService } from "./infrastructure/ConsoleMailService";
+import { ConsoleAnalyticsService } from "./infrastructure/ConsoleAnalyticsService";
+import { ConsoleNotificationService } from "./infrastructure/ConsoleNotificationService";
+
 async function main() {
-  // Repositoryを生成
+  // メール送信の失敗を再現するかどうか
+  const shouldFailMail = process.argv.includes("--fail-mail");
+
+  // Repository
   const orderRepository = new InMemoryOrderRepository();
 
-  // UseCaseを生成
-  const placeOrderUseCase = new PlaceOrderUseCase(orderRepository);
+  // Services
+  const mailService = new ConsoleMailService(shouldFailMail);
+  const analyticsService = new ConsoleAnalyticsService();
+  const notificationService = new ConsoleNotificationService();
 
-  // 注文を実行
-  const result = await placeOrderUseCase.execute({
-    items: [
-      {
-        productId: "P001",
-        productName: "キーボード",
-        unitPrice: 8000,
-        quantity: 1,
-      },
-      {
-        productId: "P002",
-        productName: "マウス",
-        unitPrice: 3000,
-        quantity: 2,
-      },
-    ],
-  });
+  // UseCase
+  const placeOrderUseCase = new PlaceOrderUseCase(
+    orderRepository,
+    mailService,
+    analyticsService,
+    notificationService,
+  );
 
-  console.log("注文完了");
-  console.log("注文ID:", result.orderId);
-  console.log("合計金額:", result.totalPrice);
-  console.log("ステータス:", result.status);
+  // 注文処理を実行
+  try {
+    const result = await placeOrderUseCase.execute({
+      items: [
+        {
+          productId: "P001",
+          productName: "キーボード",
+          unitPrice: 8000,
+          quantity: 1,
+        },
+        {
+          productId: "P002",
+          productName: "マウス",
+          unitPrice: 3000,
+          quantity: 2,
+        },
+      ],
+    });
 
-  // 保存した注文を確認
-  const savedOrder = await orderRepository.findById(result.orderId);
+    console.log("注文処理完了");
+    console.log("注文ID:", result.orderId);
+    console.log("合計金額:", result.totalPrice);
+    console.log("ステータス:", result.status);
 
-  console.log("保存された注文:", savedOrder?.getItems());
+    const savedOrder = await orderRepository.findById(result.orderId);
+    console.log("保存された注文:", savedOrder?.getItems());
+  } catch (error) {
+    console.error("注文処理エラー:", error);
+  }
 }
 
 main().catch(console.error);
