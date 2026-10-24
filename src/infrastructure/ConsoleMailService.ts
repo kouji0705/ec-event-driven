@@ -3,8 +3,13 @@ import type { MailService } from "../application/ports/MailService";
 
 export class ConsoleMailService implements MailService {
   constructor(
-    private readonly shouldFail = false,
+    private shouldFail = false,
   ) {}
+
+  // 失敗状態を切り替える
+  setShouldFail(shouldFail: boolean): void {
+    this.shouldFail = shouldFail;
+  }
 
   async send(order: Order): Promise<void> {
     if (this.shouldFail) {
